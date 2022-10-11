@@ -1,0 +1,82 @@
+---
+title: "Quarto Lesson"
+author: "Emmanuel Teitelbaum"
+output: html_document
+date: "2022-10-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(wbstats)
+library(rnaturalearth)
+library(plotly)
+
+theme_set(theme_minimal())
+
+flfp <- "SL.TLF.CACT.FE.ZS" 
+gdp_pc <- "NY.GDP.PCAP.KD"
+
+# fetch variable info from World Bank database (for titles and captions)
+indicator_info <- filter(wb_cachelist$indicators, indicator_id == flfp)
+
+# fetch data for line chart from World Bank database
+flfp_ts <- wb_data(c(flfp = flfp), start_date = 1990, end_date = lubridate::year(Sys.Date()), country = 'WLD')
+
+# fetch data for map from World Bank, join with country shapes in naturalearth
+map_data <- ne_countries(returnclass = "sf") %>%
+  left_join(
+    wb_data(
+      c(flfp = flfp), 
+      mrnev = 1
+    ),
+    c("iso_a3" = "iso3c")
+  ) %>%
+  filter(iso_a3 != "ATA") # remove Antarctica
+
+#fetch data for scatterplot from World Bank database
+plot_data <- wb_data(c(flfp = flfp, gdp_pc = gdp_pc), start_date = 2015) %>% 
+    left_join(select(wb_countries(), c(iso3c, region)), by = "iso3c")
+```
+
+## Global Trend in FLFP
+
+```{r flfp_ts}
+ggplot(flfp_ts, aes(date, flfp)) + 
+  geom_line(size=1, color="blue") + 
+  labs(
+       x= NULL, y = "Percent",
+       title = "Global Female Labor Force Participation Rate, 1990-present", 
+       caption = "Source: World Bank Development Indicators"
+       )
+```
+
+## FLFP Map
+
+```{r flfp_map}
+ggplot(map_data, aes(fill = flfp)) +
+  geom_sf() +
+  scale_fill_viridis_c(labels = scales::percent_format(scale = 1)) +
+  theme(legend.position="bottom") +
+  labs(
+    title = indicator_info$indicator,
+    fill = NULL,
+    caption = paste("Source:", indicator_info$source_org) 
+  )
+```
+
+## FLFP and Development
+
+```{r}
+#| label: flfp_gdp
+
+ggplot(plot_data, aes(x = gdp_pc, y = flfp)) + 
+  geom_point(aes(color = region)) + 
+  scale_x_log10(labels = function(x) format(x, scientific = FALSE)) +
+  geom_smooth(method = "loess", size = .75) + 
+  labs(x= "GDP per capita (log scale)", y = "FLFP (%)",       
+       title = "Female Labor Force Participation as a Function of Income") +
+  guides(color=guide_legend(title="Region"))
+```
+
